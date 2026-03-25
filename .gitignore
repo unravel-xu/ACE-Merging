@@ -1,0 +1,11 @@
+/data/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.DS_Store
+
+/evaluation/llm/
+/evaluation/vit/results/
+/evaluation/lm/results/

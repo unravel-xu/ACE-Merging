@@ -175,9 +175,7 @@ The following strategies are implemented in `src/merge/strategy.py`:
 | TSVM | `tsvm` | Task-specific vector merging |
 | ISO-C | `isoc` | Isotropic singular value replacement |
 | ISO-CTS | `isocts` | Common + task-specific subspace decomposition |
-| CART | `cart` | Centered average with low-rank truncation |
 | EMR | `emr` | Empirical merging |
-| FR | `fr` | Frobenius-norm based merging |
 
 ## Configuration Reference
 
@@ -195,18 +193,3 @@ All configuration is managed in `control/config.py`:
 | `basic.model_id_list` | List of model identifiers; first entry is the base model |
 | `device` | PyTorch device (default: `'cuda:0'`) |
 
-## Citation
-
-If you find this work useful, please cite:
-
-```bibtex
-@inproceedings{ace-merging-cvpr2026,
-  title     = {ACE-Merging: Data-Free Model Merging with Adaptive Covariance Estimation},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2026}
-}
-```
-
-## License
-
-This project is for research purposes. Please refer to the LICENSE file for details.

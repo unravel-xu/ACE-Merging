@@ -185,7 +185,7 @@ pretrained_model = GPT2ForSequenceClassification.from_pretrained('gpt2')
 models = []
 loaders = []
 device = 'cuda'
-merged_model = GPT2ForSequenceClassification.from_pretrained('/hpc2hdd/home/bx/Merge/data/models/merged/lm/2025-11-14-17-58-26/')
+merged_model = GPT2ForSequenceClassification.from_pretrained('/hpc2hdd/home/bx/ACE-Merging/data/models/merged/lm/2026-04-10-20-38-11')
 merged_model.to(device)
 
 sum_acc = 0

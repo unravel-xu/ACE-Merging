@@ -55,20 +55,18 @@ def eval_single_dataset(model, dataset_name, device='cuda'):
 
 all_datasets = ['MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN', 'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013', 'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST']
 
-all_datasets = all_datasets[:14]
-# all_datasets = ['KMNIST']
-# all_datasets = ['Flowers102', 'SUN397', 'SVHN', 'FER2013']
+all_datasets = all_datasets[:1]
 
 accuracies = {}
 
-# model_type = 'ViT-B-32'
 model_type = 'ViT-B-16'
+# model_type = 'ViT-B-32'
 # model_type = 'ViT-L-14'
 device = 'cuda'
 # pretrained_checkpoint = f'../../data/models/vit/checkpoints/{model_type}/MNISTVal/nonlinear_zeroshot.pt'
 # pretrained_model = ImageEncoder.load(model_type, pretrained_checkpoint, device)
 
-merge_ckpt = "/hpc2hdd/home/bx/Merge/data/models/merged/vit/2026-01-26-17-31-25/model.pt"
+merge_ckpt = "/hpc2hdd/home/bx/ACE-Merging/data/models/merged/vit/2026-04-10-21-15-52/model.pt"
 image_encoder = torch.load(merge_ckpt, weights_only=False, map_location=device)
 
 # evaluate each task sequentially

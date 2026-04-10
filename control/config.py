@@ -9,13 +9,13 @@ class ConfigManager:
         self.with_sparisfy = False
         self.with_merge = True
         # self.model_type = 'llm'
-        # self.model_type = 'vit'
-        # self.vit_type = 'ViT-B-16'
+        self.model_type = 'vit'
+        self.vit_type = 'ViT-B-16'
         # self.vit_type = 'ViT-B-32'
         # self.vit_type = 'ViT-L-14'
-        self.model_type = 'lm'
+        # self.model_type = 'lm'
         # self.lm_type = 'bert'
-        self.lm_type = 'gpt2'
+        # self.lm_type = 'gpt2'
         self.merge_layers = 'auto'
         self.device = "cuda:0"
         
@@ -52,15 +52,15 @@ class ConfigManager:
                 # 'tanganke/gpt2_qnli',
                 # 'tanganke/gpt2_rte'
 
-                # f'./data/models/vit/checkpoints/{self.vit_type}/MNISTVal/nonlinear_zeroshot.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/MNISTVal/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/CarsVal/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/DTDVal/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/EuroSATVal/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/GTSRBVal/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/RESISC45Val/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/SUN397Val/nonlinear_finetuned.pt',
-                # f'./data/models/vit/checkpoints/{self.vit_type}/SVHNVal/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/MNISTVal/nonlinear_zeroshot.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/MNISTVal/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/CarsVal/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/DTDVal/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/EuroSATVal/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/GTSRBVal/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/RESISC45Val/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/SUN397Val/nonlinear_finetuned.pt',
+                f'./data/models/vit/checkpoints/{self.vit_type}/SVHNVal/nonlinear_finetuned.pt',
 
                 # f'./data/models/vit/checkpoints/{self.vit_type}/PCAMVal/nonlinear_finetuned.pt',
                 # f'./data/models/vit/checkpoints/{self.vit_type}/CIFAR100Val/nonlinear_finetuned.pt',
@@ -86,10 +86,10 @@ class ConfigManager:
         self.merge = EasyDict({
             # "method": "average",
             # "threshold": 1e-8
-            "method": "wudi",
+            # "method": "wudi",
             # "method": "task_arithmetic",
             # "method": "isoc",
-            # "method": "ace",
+            "method": "ace",
             # "method": "tsvm",
             # "method": "pca",
             # "method": "isocts",

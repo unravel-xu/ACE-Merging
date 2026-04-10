@@ -28,7 +28,7 @@ def run_step3(config):
     elif config.merge["method"] == "ties":
         merged_task_vector = ms.ties_merging()
     elif config.merge["method"] == "wudi":
-        merged_task_vector, duration, memory = ms.wudi_merging()
+        merged_task_vector = ms.wudi_merging()
     elif config.merge["method"] == "cart":
         merged_task_vector = ms.cart()
     elif config.merge["method"] == 'pca':
@@ -40,9 +40,9 @@ def run_step3(config):
     elif config.merge["method"] == "emr":
         merged_task_vector = ms.emr_merging(config.merge["idx"])
     elif config.merge["method"] == "tsvm":
-        merged_task_vector, duration, memory = ms.tsvm()
+        merged_task_vector = ms.tsvm()
     elif config.merge["method"] == "ace":
-        merged_task_vector, duration, memory = ms.ace_merging()
+        merged_task_vector = ms.ace_merging()
     elif config.merge["method"] == "fr":
         merged_task_vector = ms.fr_merging()
     elif config.merge["method"] == "boost_svd":
@@ -50,8 +50,6 @@ def run_step3(config):
     elif config.merge["method"] == "rpca":
         merged_task_vector = ms.rpca()
 
-    print(duration)
-    print(memory)
     config.base_model = apply_to_model(merged_task_vector, config.base_model, scaling_coefficient=config.merge["scaling_coefficient"])
     model_save_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), f'../../data/models/merged/{config.model_type}/{config.basic.task_id}/'))
     save_merge_model(config.model_type, config.basic.model_id_list[0], model_save_dir, config.base_model)

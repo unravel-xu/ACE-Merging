@@ -1,100 +1,114 @@
-import os
-import sys
+"""Evaluate a serialized ImageEncoder saved by main.py on 8, 14, or 20 tasks."""
+
+import argparse
 import json
-import tqdm
-import torch
-import numpy as np
-
+import sys
 from pathlib import Path
-project_root = Path(__file__).resolve().parents[2]
-sys.path.append(str(project_root))
+from types import SimpleNamespace
 
-from src.datasets.registry import get_dataset
+import torch
+from tqdm import tqdm
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from evaluation.vit.extended_vit_data import extended_test_dataset
+from evaluation.vit.reproduce_vit import load_head
 from src.datasets.common import get_dataloader, maybe_dictionarize
-from src.models.modeling import ImageClassifier, ImageEncoder, ClassificationHead
-from utils.common import apply_to_model
+from src.datasets.registry import get_dataset
+from src.models.modeling import ImageClassifier
 
-def get_logits(inputs, classifier):
-    assert callable(classifier)
-    if hasattr(classifier, 'to'):
-        classifier = classifier.to(inputs.device)
-    return classifier(inputs)
+ALL_DATASETS = [
+    'MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN',
+    'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013',
+    'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST',
+]
 
-def eval_single_dataset(model, dataset_name, device='cuda'):
-    model.eval()
-    dataset = get_dataset(
-        dataset_name,
-        model.val_preprocess,
-        location='../../data/datasets/vit/'
-    )
 
+def eval_single_dataset(
+    model, dataset_name, device='cuda', *, data_root=ROOT / 'data/datasets/vit',
+    batch_size=128, workers=0,
+):
+    model = model.float().to(device).eval()
+    data_root = Path(data_root)
+    if dataset_name == 'SUN397' and (data_root / 'sun397/test_manifest.json').exists():
+        from torchvision.datasets import ImageFolder
+        test_data = ImageFolder(str(data_root / 'sun397/val'), transform=model.val_preprocess)
+    elif dataset_name in ALL_DATASETS[8:]:
+        test_data = extended_test_dataset(dataset_name, data_root, model.val_preprocess)
+    else:
+        dataset = get_dataset(
+            dataset_name, model.val_preprocess, location=str(data_root),
+            batch_size=batch_size, num_workers=workers,
+        )
+        test_data = dataset.test_loader.dataset
+
+    if len(test_data) == 0:
+        raise ValueError(f'{dataset_name} contains no evaluation samples')
+    dataset = SimpleNamespace(test_loader=torch.utils.data.DataLoader(test_data))
     dataloader = get_dataloader(
-        dataset, is_train=False, image_encoder=None, batch_size=128
+        dataset, is_train=False, batch_size=batch_size,
+        num_workers=workers, pin_memory=False,
     )
-
-    with torch.no_grad():
-        top1, correct, n = 0., 0., 0.
-        for i, data in enumerate(tqdm.tqdm(dataloader)):
-            data = maybe_dictionarize(data)
-            x = data['images'].to(device)
-            y = data['labels'].to(device)
-
-            logits = get_logits(x, model)
-
-            pred = logits.argmax(dim=1, keepdim=True).to(device)
-
-            correct += pred.eq(y.view_as(pred)).sum().item()
-            
-            n += y.size(0)
-
-        top1 = correct / n
-
-    metrics = {'top1': top1}
-    print(f'Done evaluating on {dataset_name}. Accuracy: {100*top1:.2f}%')
+    correct = total = 0
+    with torch.inference_mode():
+        for batch in tqdm(dataloader, desc=dataset_name):
+            batch = maybe_dictionarize(batch)
+            images = batch['images'].to(device, dtype=torch.float32)
+            labels = batch['labels'].to(device)
+            logits = model(images)
+            if not torch.isfinite(logits).all():
+                raise ValueError(f'Non-finite logits on {dataset_name}')
+            correct += (logits.argmax(dim=1) == labels).sum().item()
+            total += labels.numel()
+    if total != len(test_data):
+        raise RuntimeError(f'Incomplete evaluation: {total}/{len(test_data)} samples')
+    metrics = {'top1': correct / total, 'correct': correct, 'total': total}
+    print(f'{dataset_name}: {correct}/{total} = {100 * metrics["top1"]:.4f}%')
     return metrics
 
-all_datasets = ['MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN', 'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013', 'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST']
 
-all_datasets = all_datasets[:1]
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--merged-checkpoint', type=Path, required=True,
+                        help='Serialized model.pt from main.py; use the reproduction runner for merged_state.pt')
+    parser.add_argument('--model', choices=['ViT-B-32', 'ViT-B-16', 'ViT-L-14'], default='ViT-B-32')
+    parser.add_argument('--task-count', type=int, choices=[8, 14, 20], default=8)
+    parser.add_argument('--data-root', type=Path, default=ROOT / 'data/datasets/vit')
+    parser.add_argument('--checkpoints', type=Path, default=ROOT / 'data/models/vit/checkpoints')
+    parser.add_argument('--device', default='cuda:0')
+    parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--workers', type=int, default=0)
+    parser.add_argument('--splits', nargs='+', choices=['val', 'test'], default=['test'])
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    args.data_root = args.data_root.resolve()
+    args.checkpoints = args.checkpoints.resolve()
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    image_encoder = torch.load(args.merged_checkpoint, weights_only=False, map_location=args.device)
+    if not isinstance(image_encoder, torch.nn.Module) or not hasattr(image_encoder, 'val_preprocess'):
+        raise TypeError('Expected a serialized ImageEncoder from main.py; evaluate merged_state.pt with the reproduction runner')
+    image_encoder = image_encoder.float().to(args.device).eval()
+    tasks = ALL_DATASETS[:args.task_count]
+    accuracies = {}
+    for task in tasks:
+        head, _ = load_head(args, task)
+        model = ImageClassifier(image_encoder, head)
+        for split in args.splits:
+            name = task if split == 'test' else f'{task}Val'
+            accuracies[name] = eval_single_dataset(
+                model, name, args.device, data_root=args.data_root,
+                batch_size=args.batch_size, workers=args.workers,
+            )['top1']
+    output = args.output or ROOT / f'evaluation/vit/results/{args.model}/ace_merging_{args.task_count}_tasks_results.json'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(accuracies, indent=2) + '\n')
+    if 'test' in args.splits:
+        mean = sum(accuracies[task] for task in tasks) / len(tasks)
+        print(f'Complete {len(tasks)}-task test mean: {100 * mean:.4f}%')
+    print(f'Saved results to {output.resolve()}')
 
-accuracies = {}
 
-model_type = 'ViT-B-16'
-# model_type = 'ViT-B-32'
-# model_type = 'ViT-L-14'
-device = 'cuda'
-# pretrained_checkpoint = f'../../data/models/vit/checkpoints/{model_type}/MNISTVal/nonlinear_zeroshot.pt'
-# pretrained_model = ImageEncoder.load(model_type, pretrained_checkpoint, device)
-
-merge_ckpt = "/hpc2hdd/home/bx/ACE-Merging/data/models/merged/vit/2026-04-10-21-15-52/model.pt"
-image_encoder = torch.load(merge_ckpt, weights_only=False, map_location=device)
-
-# evaluate each task sequentially
-for dataset in all_datasets:
-    # load pretrained checkpoint
-
-    head_name = f'../../data/models/vit/checkpoints/{model_type}/head_{dataset}Val.pt'
-    # model_name = f'../../data/models/vit/checkpoints/{model_type}/{dataset}Val/nonlinear_finetuned.pt'
-    classification_head = ClassificationHead.load(head_name, device)
-    # image_encoder = ImageEncoder.load(model_type, model_name, device)
-    model = ImageClassifier(image_encoder, classification_head)
-
-    for split in ["val", "test"]:
-        print("=" * 100)
-        print(f"Evaluating on {split} split.")
-        eval_dataset = dataset if split == "test" else f"{dataset}Val"
-        acc = eval_single_dataset(model, eval_dataset)['top1']
-        accuracies[eval_dataset] = acc
-
-model_name = 'wudi_merging_14_tasks'
-
-res_dir_path = f"./results/{model_type}"
-
-os.makedirs(res_dir_path, exist_ok=True)
-
-save_path = os.path.join(res_dir_path, f'{model_name}_results.json')
-
-with open(save_path, "a+") as f:
-    f.write(json.dumps(accuracies, sort_keys=False, indent=4) + "\n")
-
-print("File saved at: ", save_path)
+if __name__ == '__main__':
+    main()

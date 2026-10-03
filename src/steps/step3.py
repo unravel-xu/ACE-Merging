@@ -42,7 +42,11 @@ def run_step3(config):
     elif config.merge["method"] == "tsvm":
         merged_task_vector = ms.tsvm()
     elif config.merge["method"] == "ace":
-        merged_task_vector = ms.ace_merging()
+        merged_task_vector = ms.ace_merging(
+            eps=config.merge.get("ace_eps", 1e-2),
+            k_frac=config.merge.get("ace_k_frac", 0.3),
+            tau=config.merge.get("ace_tau", 0.3),
+        )
     elif config.merge["method"] == "fr":
         merged_task_vector = ms.fr_merging()
     elif config.merge["method"] == "boost_svd":

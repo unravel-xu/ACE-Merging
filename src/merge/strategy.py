@@ -341,7 +341,7 @@ class MergeStrategy:
             return merged_task_vector
 
     # @track_stats
-    def ace_merging(self, eps = 1e-2, k_frac = 0.3):
+    def ace_merging(self, eps = 1e-2, k_frac = 0.3, tau = 0.3):
         with torch.no_grad():
             merged_task_vector = {}
 
@@ -360,7 +360,7 @@ class MergeStrategy:
                 log_traces = torch.log(traces + 1e-12)
 
                 gamma = torch.var(log_traces) / (torch.mean(log_traces).pow(2) + 1e-12)
-                flag = gamma > 0.3
+                flag = gamma > tau
                 avg_trace = traces.mean().item()
 
                 Sigmas = []

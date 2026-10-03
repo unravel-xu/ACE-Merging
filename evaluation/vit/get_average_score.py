@@ -1,28 +1,41 @@
+"""Compute task means from eval_vit.py JSON without accepting partial test suites."""
+
+import argparse
 import json
 
-ALL_DATASETS = ['MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN', 'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013', 'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST']
-
+ALL_DATASETS = [
+    'MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN',
+    'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013',
+    'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST',
+]
 DATASETS_8 = ALL_DATASETS[:8]
 DATASETS_14 = ALL_DATASETS[:14]
 DATASETS_20 = ALL_DATASETS[:20]
 
 
 def compute_average(dataset_list, filepath):
-    # Read the data from the JSON file
-    with open(filepath, "r") as file:
-        data = json.load(file)
+    with open(filepath) as handle:
+        data = json.load(handle)
+    missing = [name for name in dataset_list if name not in data]
+    if missing:
+        raise ValueError(f'Incomplete test suite; missing tasks: {", ".join(missing)}')
+    test_mean = sum(data[name] for name in dataset_list) / len(dataset_list)
+    print(f'test: {100 * test_mean:.4f}% ({len(dataset_list)} tasks)')
+    val_names = [f'{name}Val' for name in dataset_list]
+    val_mean = None
+    if all(name in data for name in val_names):
+        val_mean = sum(data[name] for name in val_names) / len(val_names)
+        print(f'val: {100 * val_mean:.4f}% ({len(dataset_list)} tasks)')
+    return test_mean, val_mean
 
-    # Filter the values corresponding to the datasets in the list
-    selected_test_score = [data[dataset] for dataset in dataset_list if dataset in data]
-    selected_val_score = [data[f'{dataset}Val'] for dataset in dataset_list if dataset in data]
-    # Compute the average if there are values
-    
-    avg_test_score = sum(selected_test_score) / len(selected_test_score)
-    avg_val_score = sum(selected_val_score) / len(selected_val_score)
-    
-    print(f'test: {avg_test_score * 100:.2f}')
-    print(f'val: {avg_val_score * 100:.2f}')
 
-filepath = '../vit/results/ViT-L-14/ace_merging_14_tasks_results.json'
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--results', required=True)
+    parser.add_argument('--task-count', type=int, choices=[8, 14, 20], default=8)
+    args = parser.parse_args()
+    compute_average(ALL_DATASETS[:args.task_count], args.results)
 
-compute_average(DATASETS_20, filepath)
+
+if __name__ == '__main__':
+    main()

@@ -10,8 +10,8 @@ class ConfigManager:
         self.with_merge = True
         # self.model_type = 'llm'
         self.model_type = 'vit'
-        self.vit_type = 'ViT-B-16'
-        # self.vit_type = 'ViT-B-32'
+        # self.vit_type = 'ViT-B-16'
+        self.vit_type = 'ViT-B-32'
         # self.vit_type = 'ViT-L-14'
         # self.model_type = 'lm'
         # self.lm_type = 'bert'
@@ -95,6 +95,10 @@ class ConfigManager:
             # "method": "isocts",
             # "method": "cart",
             "scaling_coefficient": 1.0,
+            # Verified ViT-B settings; use docs/vit_reproduction.md for ViT-L.
+            "ace_eps": 1e-5 if self.model_type == 'vit' else 1e-2,
+            "ace_k_frac": 0.5 if self.model_type == 'vit' else 0.3,
+            "ace_tau": 0.03 if self.model_type == 'vit' else 0.3,
             # "method": "breadcrumbs",
             # "param_density": 0.9,
             # "param_value_mask_rate": 0.01,

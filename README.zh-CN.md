@@ -307,6 +307,37 @@ python eval_gpt.py
 
 # ViT 快速复现
 
+## 已验证的 ViT 复现参数
+
+下表来自额外完成的复现实验，使用**历史 ACE/TSV 检查点**、FP32、QuickGELU，
+关闭 AMP 和 TF32。这些是本次验证的复现配置，不代表已恢复原始论文运行命令。
+分数为各任务完整测试准确率的等权平均，不表示每个任务都达到论文数字。
+
+| 模型 | Tasks | `scaling_coefficient` | `ace_eps` | `ace_k_frac` | `ace_tau` | 实测均值 % | 论文均值 % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ViT-B-32 | 8 | 1.0 | 1e-5 | 0.5 | 0.03 | 88.5174 | 87.88 |
+| ViT-B-32 | 14 | 1.0 | 1e-5 | 0.5 | 0.03 | 83.6653 | 82.29 |
+| ViT-B-32 | 20 | 1.0 | 1e-5 | 0.5 | 0.03 | 80.3598 | 78.83 |
+| ViT-B-16 | 8 | 1.0 | 1e-5 | 0.5 | 0.03 | 91.3526 | 90.60 |
+| ViT-B-16 | 14 | 1.0 | 1e-5 | 0.5 | 0.03 | 87.0789 | 86.12 |
+| ViT-B-16 | 20 | 1.0 | 1e-5 | 0.5 | 0.03 | 83.9143 | 82.11 |
+| ViT-L-14 | 8 | 0.95 | 1e-5 | 0.7 | 0.03 | 94.7256 | 94.57 |
+| ViT-L-14 | 14 | 0.95 | 1e-5 | 0.7 | 0.03 | 91.6343 | 91.07 |
+| ViT-L-14 | 20 | 0.95 | 3e-6 | 0.7 | 0.03 | 90.8238 | 89.49 |
+
+在 `config.merge` 中设置四个参数。`src/steps/step3.py` 的 ACE 分支会把
+`ace_eps`、`ace_k_frac`、`ace_tau` 透传到 `MergeStrategy.ace_merging`，
+`scaling_coefficient` 在合并向量加到基座模型时应用。没有这三个 ACE 字段的
+旧配置仍采用原先的缺省值：`1e-2`、`0.3`、`0.3`。
+
+**DTD 的检查点版本需要分别报告。** 修正版 DTD 检查点下，目前完成的
+ViT-L-14 8/14/20-task 最高完整实测为 92.9318% / 90.6397% / 89.7283%；
+8/14-task 仍低于论文的 94.57% / 91.07%。这些结果采用各自测试过的配置，
+两版权重均在官方 `test1.txt` 上评测。
+
+参见[完整复现说明](docs/vit_reproduction.md)中的 FP32 命令、权重哈希和实验限制，
+以及[数据准备说明](docs/vit_datasets.md)中的目录、下载和划分要求。
+
 ## 1. 下载 ViT Checkpoints
 
 ```bash
@@ -435,6 +466,9 @@ class ConfigManager:
             # "method": "isocts",
             # "method": "cart",
             "scaling_coefficient": 1.0,
+            "ace_eps": 1e-5,
+            "ace_k_frac": 0.5,
+            "ace_tau": 0.03,
             # "method": "breadcrumbs",
             # "param_density": 0.9,
             # "param_value_mask_rate": 0.01,
@@ -504,39 +538,29 @@ Updating layer: ……
 
 将输出的模型保存路径复制为 `YOURPATH`。
 
-## 4. 评测 ViT
+## 4. 评估 ViT
+
+在仓库根目录运行。将 `TASK_ID` 替换为合并模型所在目录，并确保模型名称、
+任务数量和 checkpoint 版本与合并配置一致：
 
 ```bash
-cd ACE-Merging/evaluation/vit/
+python evaluation/vit/eval_vit.py \
+  --merged-checkpoint "data/models/merged/vit/TASK_ID/model.pt" \
+  --model ViT-B-32 --task-count 8 \
+  --checkpoints data/models/vit/checkpoints \
+  --data-root data/datasets/vit_reproduction \
+  --device cuda:0 --batch-size 128 --workers 0
 ```
 
-修改 `eval_vit.py`：
+14 或 20 个任务使用 `--task-count 14` 或 `20`，并为新增数据集使用已准备好的
+`data/datasets/vit_extended` 目录。评估默认使用测试集，会输出完整任务集合的
+平均准确率并保存为有效的 JSON 文件。所有验证集均已准备好时，可添加
+`--splits val test`。通过 `--output` 为不同运行指定独立的结果文件。
 
-```python
-all_datasets = ['MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN', 'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013', 'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST']
-
-# 如果是 8-task 合并：
-all_datasets = all_datasets[:8]
-
-# 如果是 14-task 合并：
-# all_datasets = all_datasets[:14]
-
-# 如果是 20-task 合并：
-# all_datasets = all_datasets[:20]
-
-accuracies = {}
-
-model_type = 'ViT-B-16' # -> 和合并 config 中的配置保持一致
-merge_ckpt = 'YOURPATH/model.pt'
-```
-
-执行：
-
-```bash
-python eval_vit.py
-```
-
-第一次运行会自动下载 eval 数据集
+部分加载器会在首次运行时下载数据集；DTD、SUN397、EuroSAT、RESISC45 和
+Stanford Cars 需要预先准备文件或额外下载，详见[数据集准备文档](docs/vit_datasets.md)。
+此命令加载 `main.py` 保存的完整 `model.pt` 对象。显式 FP32/QuickGELU 复现脚本
+输出的 `merged_state.pt` 应使用[复现文档](docs/vit_reproduction.md)中的评估命令。
 
 ---
 
@@ -717,6 +741,9 @@ done
 | `vit_type` | 当 `model_type='vit'`时的 ViT 架构：`'ViT-B-32'`、`'ViT-B-16'` 或 `'ViT-L-14'` |
 | `merge.method` | 合并方法，例如 `'ace'` |
 | `merge.scaling_coefficient` | merged task vector 的缩放系数 |
+| `merge.ace_eps` | ACE 协方差正则项，透传为 `eps` |
+| `merge.ace_k_frac` | 保留的奇异分量比例，透传为 `k_frac` |
+| `merge.ace_tau` | 自适应归一化阈值，透传为 `tau` |
 | `with_merge` | 是否启用合并 |
 | `with_sparisfy` | 是否在合并前启用稀疏化 |
 | `basic.model_id_list` | 模型列表，第一个元素为 base model |

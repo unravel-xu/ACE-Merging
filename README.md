@@ -307,6 +307,42 @@ The evaluation will then be executed.
 
 # ViT Quick Reproduction
 
+## Verified ViT Reproduction Settings
+
+The following configurations were checked in additional reproduction runs using
+the **historical ACE/TSV checkpoints**, FP32, QuickGELU, and disabled AMP/TF32.
+They are newly verified reproduction settings, rather than reconstructed original
+experiment command lines. Accuracy is the unweighted mean over complete task test
+sets; it does not imply that every individual task matches the paper.
+
+| Model | Tasks | `scaling_coefficient` | `ace_eps` | `ace_k_frac` | `ace_tau` | Reproduced mean (%) | Paper mean (%) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ViT-B-32 | 8 | 1.0 | 1e-5 | 0.5 | 0.03 | 88.5174 | 87.88 |
+| ViT-B-32 | 14 | 1.0 | 1e-5 | 0.5 | 0.03 | 83.6653 | 82.29 |
+| ViT-B-32 | 20 | 1.0 | 1e-5 | 0.5 | 0.03 | 80.3598 | 78.83 |
+| ViT-B-16 | 8 | 1.0 | 1e-5 | 0.5 | 0.03 | 91.3526 | 90.60 |
+| ViT-B-16 | 14 | 1.0 | 1e-5 | 0.5 | 0.03 | 87.0789 | 86.12 |
+| ViT-B-16 | 20 | 1.0 | 1e-5 | 0.5 | 0.03 | 83.9143 | 82.11 |
+| ViT-L-14 | 8 | 0.95 | 1e-5 | 0.7 | 0.03 | 94.7256 | 94.57 |
+| ViT-L-14 | 14 | 0.95 | 1e-5 | 0.7 | 0.03 | 91.6343 | 91.07 |
+| ViT-L-14 | 20 | 0.95 | 3e-6 | 0.7 | 0.03 | 90.8238 | 89.49 |
+
+Set the four fields in `config.merge`. The ACE branch in `src/steps/step3.py`
+forwards `ace_eps`, `ace_k_frac`, and `ace_tau` to `MergeStrategy.ace_merging`;
+`scaling_coefficient` is applied when adding the merged task vector to the base
+model. Older configurations without the three ACE fields retain the method's
+previous defaults (`1e-2`, `0.3`, `0.3`).
+
+**DTD checkpoint versions must be reported separately.** With the corrected
+upstream DTD checkpoint, the best completed ViT-L-14 runs so far are 92.9318%,
+90.6397%, and 89.7283% for 8/14/20 tasks. The 8/14-task means remain below the
+paper's 94.57%/91.07%. These were separately tested configurations, and both
+checkpoint versions were evaluated on official DTD `test1.txt`.
+
+See the [full reproduction guide](docs/vit_reproduction.md) for explicit FP32
+commands, checkpoint hashes, and experimental limitations, and the
+[dataset preparation guide](docs/vit_datasets.md) for required files and splits.
+
 ## 1. Download ViT Checkpoints
 
 ```bash
@@ -435,6 +471,9 @@ class ConfigManager:
             # "method": "isocts",
             # "method": "cart",
             "scaling_coefficient": 1.0,
+            "ace_eps": 1e-5,
+            "ace_k_frac": 0.5,
+            "ace_tau": 0.03,
             # "method": "breadcrumbs",
             # "param_density": 0.9,
             # "param_value_mask_rate": 0.01,
@@ -506,37 +545,31 @@ Copy the model save path from the output as `YOURPATH`.
 
 ## 4. Evaluate ViT
 
-```bash
-cd ACE-Merging/evaluation/vit/
-```
-
-Modify `eval_vit.py`:
-
-```python
-all_datasets = ['MNIST', 'Cars', 'DTD', 'EuroSAT', 'GTSRB', 'RESISC45', 'SUN397', 'SVHN', 'PCAM', 'CIFAR100', 'STL10', 'OxfordIIITPet', 'Flowers102', 'FER2013', 'CIFAR10', 'Food101', 'RenderedSST2', 'EMNIST', 'FashionMNIST', 'KMNIST']
-
-# For 8-task merging:
-all_datasets = all_datasets[:8]
-
-# For 14-task merging:
-# all_datasets = all_datasets[:14]
-
-# For 20-task merging:
-# all_datasets = all_datasets[:20]
-
-accuracies = {}
-
-model_type = 'ViT-B-16' # -> Keep this consistent with the merge config
-merge_ckpt = 'YOURPATH/model.pt'
-```
-
-Run:
+Run from the repository root. Replace `TASK_ID` with the merged model's directory,
+and keep the model name, task count, and checkpoint release consistent with the
+merge configuration:
 
 ```bash
-python eval_vit.py
+python evaluation/vit/eval_vit.py \
+  --merged-checkpoint "data/models/merged/vit/TASK_ID/model.pt" \
+  --model ViT-B-32 --task-count 8 \
+  --checkpoints data/models/vit/checkpoints \
+  --data-root data/datasets/vit_reproduction \
+  --device cuda:0 --batch-size 128 --workers 0
 ```
 
-The evaluation datasets will be downloaded automatically during the first run.
+Use `--task-count 14` or `20` for those complete suites, and the prepared
+`data/datasets/vit_extended` root for the additional tasks. The evaluator defaults
+to the test split, prints the complete-task mean, and writes a valid JSON file.
+Add `--splits val test` when all validation data are available. Set `--output`
+to keep results from different runs separate.
+
+Some loaders download their datasets on the first run. DTD, SUN397, EuroSAT,
+RESISC45, and Stanford Cars require prepared files or additional downloads; see
+the [dataset preparation guide](docs/vit_datasets.md). This command loads the
+serialized `model.pt` produced by `main.py`. For the explicit FP32/QuickGELU
+reproduction runner's `merged_state.pt`, use the commands in the
+[reproduction guide](docs/vit_reproduction.md).
 
 ---
 
@@ -717,6 +750,9 @@ You can directly add your own merging strategy in `src/merge/strategy.py`.
 | `vit_type`                  | ViT architecture when `model_type='vit'`: `'ViT-B-32'`, `'ViT-B-16'`, or `'ViT-L-14'` |
 | `merge.method`              | Merging method, e.g., `'ace'`                                |
 | `merge.scaling_coefficient` | Scaling coefficient for the merged task vector               |
+| `merge.ace_eps`             | ACE covariance regularization; forwarded as `eps`            |
+| `merge.ace_k_frac`          | Fraction of singular components retained; forwarded as `k_frac` |
+| `merge.ace_tau`             | Threshold for adaptive normalization; forwarded as `tau`     |
 | `with_merge`                | Whether to enable merging                                    |
 | `with_sparisfy`             | Whether to enable sparsification before merging              |
 | `basic.model_id_list`       | Model list; the first element is the base model              |

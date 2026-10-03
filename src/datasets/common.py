@@ -124,10 +124,35 @@ class FeatureDataset(Dataset):
         return data
 
 
-def get_dataloader(dataset, is_train, image_encoder=None, batch_size=128, device='cuda'):
+def get_dataloader(
+    dataset,
+    is_train,
+    image_encoder=None,
+    batch_size=128,
+    device='cuda',
+    num_workers=0,
+    pin_memory=False,
+):
     if image_encoder is not None:
         feature_dataset = FeatureDataset(is_train, image_encoder, dataset, device)
-        dataloader = DataLoader(feature_dataset, batch_size=batch_size, shuffle=is_train)
+        dataloader = DataLoader(
+            feature_dataset,
+            batch_size=batch_size,
+            shuffle=is_train,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
     else:
-        dataloader = dataset.train_loader if is_train else dataset.test_loader
+        base_loader = dataset.train_loader if is_train else dataset.test_loader
+
+        dataloader = DataLoader(
+            base_loader.dataset,
+            batch_size=batch_size,
+            sampler=base_loader.sampler,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=base_loader.collate_fn,
+            drop_last=False if not is_train else getattr(base_loader, "drop_last", False),
+        )
+
     return dataloader

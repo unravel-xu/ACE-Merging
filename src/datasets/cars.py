@@ -1,36 +1,12 @@
-import os
 import pathlib
 from typing import Any, Callable, Optional, Tuple
 
 import torch
-import torchvision.datasets as datasets
 from PIL import Image
-from torchvision.datasets.utils import download_and_extract_archive, download_url, verify_str_arg
+from torchvision.datasets.utils import verify_str_arg
 from torchvision.datasets.vision import VisionDataset
 
-
 class PytorchStanfordCars(VisionDataset):
-    """`Stanford Cars <https://ai.stanford.edu/~jkrause/cars/car_dataset.html>`_ Dataset
-
-    The Cars dataset contains 16,185 images of 196 classes of cars. The data is
-    split into 8,144 training images and 8,041 testing images, where each class
-    has been split roughly in a 50-50 split
-
-    .. note::
-
-        This class needs `scipy <https://docs.scipy.org/doc/>`_ to load target files from `.mat` format.
-
-    Args:
-        root (string): Root directory of dataset
-        split (string, optional): The dataset split, supports ``"train"`` (default) or ``"test"``.
-        transform (callable, optional): A function/transform that  takes in an PIL image
-            and returns a transformed version. E.g, ``transforms.RandomCrop``
-        target_transform (callable, optional): A function/transform that takes in the
-            target and transforms it.
-        download (bool, optional): If True, downloads the dataset from the internet and
-            puts it in root directory. If dataset is already downloaded, it is not
-            downloaded again."""
-
     def __init__(
         self,
         root: str,
@@ -39,101 +15,120 @@ class PytorchStanfordCars(VisionDataset):
         target_transform: Optional[Callable] = None,
         download: bool = False,
     ) -> None:
-
         try:
             import scipy.io as sio
         except ImportError:
-            raise RuntimeError("Scipy is not found. This dataset needs to have scipy installed: pip install scipy")
+            raise RuntimeError(
+                "Scipy is not found. Please install it with: pip install scipy"
+            )
 
-        super().__init__(root, transform=transform, target_transform=target_transform)
+        root = pathlib.Path(root).expanduser()
+        super().__init__(str(root), transform=transform, target_transform=target_transform)
 
         self._split = verify_str_arg(split, "split", ("train", "test"))
-        self._base_folder = pathlib.Path(root) / "stanford_cars"
+
+        self._base_folder = root / "stanford_cars"
         devkit = self._base_folder / "devkit"
 
         if self._split == "train":
             self._annotations_mat_path = devkit / "cars_train_annos.mat"
             self._images_base_path = self._base_folder / "cars_train"
         else:
-            self._annotations_mat_path = self._base_folder / "cars_test_annos_withlabels.mat"
+            # Prepared releases place the labeled test annotations in either location.
+            candidates = (
+                devkit / "cars_test_annos_withlabels.mat",
+                self._base_folder / "cars_test_annos_withlabels.mat",
+            )
+            self._annotations_mat_path = next(
+                (path for path in candidates if path.is_file()), candidates[0]
+            )
             self._images_base_path = self._base_folder / "cars_test"
 
         if download:
             self.download()
 
         if not self._check_exists():
-            raise RuntimeError("Dataset not found. You can use download=True to download it")
+            raise RuntimeError(
+                f"Stanford Cars dataset not found or incomplete.\n"
+                f"Expected base folder: {self._base_folder}\n"
+                f"Expected image folder: {self._images_base_path}\n"
+                f"Expected annotation file: {self._annotations_mat_path}\n"
+                f"Need train annotations: {devkit / 'cars_train_annos.mat'}\n"
+                f"Test annotations may also be placed at: {self._base_folder / 'cars_test_annos_withlabels.mat'}\n"
+                f"Need class metadata: {devkit / 'cars_meta.mat'}"
+            )
+
+        annotations = sio.loadmat(
+            str(self._annotations_mat_path),
+            squeeze_me=True
+        )["annotations"]
 
         self._samples = [
             (
                 str(self._images_base_path / annotation["fname"]),
-                annotation["class"] - 1,  # Original target mapping  starts from 1, hence -1
+                int(annotation["class"]) - 1,
             )
-            for annotation in sio.loadmat(self._annotations_mat_path, squeeze_me=True)["annotations"]
+            for annotation in annotations
         ]
 
-        self.classes = sio.loadmat(str(devkit / "cars_meta.mat"), squeeze_me=True)["class_names"].tolist()
+        self.classes = sio.loadmat(
+            str(devkit / "cars_meta.mat"),
+            squeeze_me=True
+        )["class_names"].tolist()
+
         self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
 
     def __len__(self) -> int:
         return len(self._samples)
 
     def __getitem__(self, idx: int) -> Tuple[Any, Any]:
-        """Returns pil_image and class_id for given index"""
         image_path, target = self._samples[idx]
-        pil_image = Image.open(image_path).convert("RGB")
+        image = Image.open(image_path).convert("RGB")
 
         if self.transform is not None:
-            pil_image = self.transform(pil_image)
+            image = self.transform(image)
+
         if self.target_transform is not None:
             target = self.target_transform(target)
-        return pil_image, target
+
+        return image, target
 
     def download(self) -> None:
         if self._check_exists():
             return
 
-        download_and_extract_archive(
-            url="https://ai.stanford.edu/~jkrause/cars/car_devkit.tgz",
-            download_root=str(self._base_folder),
-            md5="c3b158d763b6e2245038c8ad08e45376",
+        raise RuntimeError(
+            "Automatic download for Stanford Cars is disabled because the original links are unavailable. "
+            f"Please manually place the dataset under: {self._base_folder}"
         )
-        if self._split == "train":
-            download_and_extract_archive(
-                url="https://ai.stanford.edu/~jkrause/car196/cars_train.tgz",
-                download_root=str(self._base_folder),
-                md5="065e5b463ae28d29e77c1b4b166cfe61",
-            )
-        else:
-            download_and_extract_archive(
-                url="https://ai.stanford.edu/~jkrause/car196/cars_test.tgz",
-                download_root=str(self._base_folder),
-                md5="4ce7ebf6a94d07f1952d94dd34c4d501",
-            )
-            download_url(
-                url="https://ai.stanford.edu/~jkrause/car196/cars_test_annos_withlabels.mat",
-                root=str(self._base_folder),
-                md5="b0a2b23655a3edd16d84508592a98d10",
-            )
 
     def _check_exists(self) -> bool:
-        if not (self._base_folder / "devkit").is_dir():
+        devkit = self._base_folder / "devkit"
+
+        if not devkit.is_dir():
+            return False
+
+        if not (devkit / "cars_meta.mat").exists():
             return False
 
         return self._annotations_mat_path.exists() and self._images_base_path.is_dir()
-
 
 class Cars:
     def __init__(
         self,
         preprocess,
-        location=os.path.expanduser("~/data"),
+        location="ACE-Merging/data/datasets/vit",
         batch_size=32,
         num_workers=16,
     ):
-        # Data loading code
 
-        self.train_dataset = PytorchStanfordCars(location, "train", preprocess, download=True)
+        self.train_dataset = PytorchStanfordCars(
+            location,
+            split="train",
+            transform=preprocess,
+            download=False,
+        )
+
         self.train_loader = torch.utils.data.DataLoader(
             self.train_dataset,
             shuffle=True,
@@ -141,9 +136,22 @@ class Cars:
             num_workers=num_workers,
         )
 
-        self.test_dataset = PytorchStanfordCars(location, "test", preprocess, download=True)
-        self.test_loader = torch.utils.data.DataLoader(
-            self.test_dataset, batch_size=batch_size, num_workers=num_workers
+        self.test_dataset = PytorchStanfordCars(
+            location,
+            split="test",
+            transform=preprocess,
+            download=False,
         )
-        idx_to_class = dict((v, k) for k, v in self.train_dataset.class_to_idx.items())
-        self.classnames = [idx_to_class[i].replace("_", " ") for i in range(len(idx_to_class))]
+
+        self.test_loader = torch.utils.data.DataLoader(
+            self.test_dataset,
+            shuffle=False,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
+
+        idx_to_class = {v: k for k, v in self.train_dataset.class_to_idx.items()}
+        self.classnames = [
+            idx_to_class[i].replace("_", " ")
+            for i in range(len(idx_to_class))
+        ]
